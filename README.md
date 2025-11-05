@@ -142,10 +142,10 @@ The project includes sample images in the `test_images/` directory for testing:
 
 ```bash
 # Test encryption
-python main.py encrypt -i ./test_images -o ./test_encrypted
+python3 main.py encrypt -i ./test_images -o ./encrypted_images
 
 # Test decryption (use the key from encryption output)
-python main.py decrypt -i ./test_encrypted -o ./test_decrypted -k <your-key>
+python3 main.py decrypt -i ./encrypted_images -o ./decrypted_images -k <key>
 ```
 
 ## 📈 Performance Considerations
