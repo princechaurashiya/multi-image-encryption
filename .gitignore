@@ -178,3 +178,10 @@ test_decrypted/
 *.bak
 *.backup
 *.orig
+
+# ============================================================================
+# Analysis Reports (Generated)
+# ============================================================================
+security_report.txt
+analysis_report.txt
+*.report
