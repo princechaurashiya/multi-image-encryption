@@ -100,52 +100,153 @@ class SecurityAnalyzer:
         }
     
     @staticmethod
-    def analyze_differential_attack(original_path: str, encrypted_path: str) -> Dict[str, float]:
+    def analyze_differential_attack(
+        original_image: np.ndarray,
+        encrypt_function,
+        pixel_change_position: Tuple[int, int] = None
+    ) -> Dict[str, float]:
         """
-        Analyze differential attack resistance using NPCR and UACI metrics
-        
-        NPCR (Number of Pixel Change Rate): Percentage of pixels that change
+        Analyze differential attack resistance using NPCR and UACI metrics.
+
+        According to research paper methodology:
+        1. Encrypt original image P to get C1
+        2. Change ONE pixel in P to get P'
+        3. Encrypt P' to get C2
+        4. Calculate NPCR and UACI between C1 and C2 (per channel for RGB)
+
+        NPCR (Number of Pixel Change Rate): Percentage of pixels that differ between C1 and C2
         UACI (Unified Average Change Intensity): Average intensity of pixel changes
-        
+
+        Theoretical ideal values:
+        - NPCR ≈ 99.6094%
+        - UACI ≈ 33.4635%
+
         Args:
-            original_path: Path to original image
-            encrypted_path: Path to encrypted image
-            
+            original_image: Original image as numpy array
+            encrypt_function: Encryption function that takes image array and returns encrypted array
+            pixel_change_position: (i, j) position of pixel to change. If None, random position is used.
+
+        Returns:
+            Dictionary with 'NPCR' and 'UACI' values (as percentages), calculated per channel
+        """
+        # Make a copy of original image
+        original = original_image.copy()
+
+        # Get dimensions
+        if len(original.shape) == 3:
+            M, N, num_channels = original.shape
+        else:
+            M, N = original.shape
+            num_channels = 1
+            original = original[:, :, np.newaxis]
+
+        # Determine pixel position to change
+        if pixel_change_position is None:
+            np.random.seed(42)
+            i = np.random.randint(0, M)
+            j = np.random.randint(0, N)
+        else:
+            i, j = pixel_change_position
+
+        # Step 1: Encrypt original image to get C1
+        C1 = encrypt_function(original.squeeze() if num_channels == 1 else original)
+        if len(C1.shape) == 2:
+            C1 = C1[:, :, np.newaxis]
+
+        # Step 2: Create modified image P' (change ONE pixel)
+        modified = original.copy()
+
+        # Change the pixel value (increment by 1, wrap around if at 255)
+        for c in range(num_channels):
+            modified[i, j, c] = np.uint8((int(modified[i, j, c]) + 1) % 256)
+
+        # Step 3: Encrypt modified image to get C2
+        C2 = encrypt_function(modified.squeeze() if num_channels == 1 else modified)
+        if len(C2.shape) == 2:
+            C2 = C2[:, :, np.newaxis]
+
+        # Ensure same dimensions
+        if C1.shape != C2.shape:
+            raise ValueError("Encrypted images C1 and C2 have different dimensions")
+
+        total_pixels = M * N
+
+        # Calculate NPCR and UACI per channel (as per research paper Table 11)
+        channel_names = ['R', 'G', 'B'] if num_channels >= 3 else ['Gray']
+        npcr_per_channel = {}
+        uaci_per_channel = {}
+
+        for c in range(min(num_channels, 3)):
+            C1_channel = C1[:, :, c]
+            C2_channel = C2[:, :, c]
+
+            # NPCR = (ΣΣ D(i,j)) / (M × N) × 100%
+            D = (C1_channel != C2_channel).astype(np.int32)
+            npcr = (np.sum(D) / total_pixels) * 100
+
+            # UACI = (1/(M×N)) × ΣΣ |C1(i,j) - C2(i,j)| / 255 × 100%
+            intensity_diff = np.abs(C1_channel.astype(np.float64) - C2_channel.astype(np.float64))
+            uaci = (np.sum(intensity_diff) / (total_pixels * 255)) * 100
+
+            channel_name = channel_names[c] if c < len(channel_names) else f'Ch{c}'
+            npcr_per_channel[channel_name] = npcr
+            uaci_per_channel[channel_name] = uaci
+
+        # Calculate mean NPCR and UACI across all channels
+        mean_npcr = np.mean(list(npcr_per_channel.values()))
+        mean_uaci = np.mean(list(uaci_per_channel.values()))
+
+        return {
+            'NPCR': mean_npcr,
+            'UACI': mean_uaci,
+            'NPCR_per_channel': npcr_per_channel,
+            'UACI_per_channel': uaci_per_channel,
+            'changed_pixel_position': (i, j),
+            'theoretical_NPCR': 99.6094,
+            'theoretical_UACI': 33.4635
+        }
+
+    @staticmethod
+    def calculate_npcr_uaci(C1: np.ndarray, C2: np.ndarray) -> Dict[str, float]:
+        """
+        Calculate NPCR and UACI between two encrypted images directly.
+
+        Use this when you already have two encrypted images C1 and C2
+        where C2 is encrypted from an image that differs by one pixel from C1's source.
+
+        Args:
+            C1: First encrypted image as numpy array
+            C2: Second encrypted image as numpy array (from 1-pixel-modified original)
+
         Returns:
             Dictionary with 'NPCR' and 'UACI' values (as percentages)
         """
-        original = SecurityAnalyzer._load_image_as_array(original_path)
-        encrypted = SecurityAnalyzer._load_image_as_array(encrypted_path)
-        
         # Convert to grayscale if RGB
-        if len(original.shape) == 3:
-            original = np.dot(original[..., :3], [0.299, 0.587, 0.114]).astype(np.uint8)
-        if len(encrypted.shape) == 3:
-            encrypted = np.dot(encrypted[..., :3], [0.299, 0.587, 0.114]).astype(np.uint8)
-        
-        # Ensure same dimensions
-        if original.shape != encrypted.shape:
-            # Resize encrypted to match original
-            from PIL import Image as PILImage
-            encrypted_img = PILImage.fromarray(encrypted)
-            encrypted_img = encrypted_img.resize((original.shape[1], original.shape[0]))
-            encrypted = np.array(encrypted_img)
-        
-        M, N = original.shape
+        if len(C1.shape) == 3:
+            C1 = np.dot(C1[..., :3], [0.299, 0.587, 0.114]).astype(np.uint8)
+        if len(C2.shape) == 3:
+            C2 = np.dot(C2[..., :3], [0.299, 0.587, 0.114]).astype(np.uint8)
+
+        if C1.shape != C2.shape:
+            raise ValueError("Images C1 and C2 must have the same dimensions")
+
+        M, N = C1.shape
         total_pixels = M * N
-        
-        # Calculate NPCR (Number of Pixel Change Rate)
-        # NPCR = (Number of different pixels / Total pixels) * 100
-        different_pixels = np.sum(original != encrypted)
-        npcr = (different_pixels / total_pixels) * 100
-        
-        # Calculate UACI (Unified Average Change Intensity)
-        # UACI = (1 / (M * N)) * Σ|original(i,j) - encrypted(i,j)| / 255 * 100
-        intensity_diff = np.abs(original.astype(np.float64) - encrypted.astype(np.float64))
+
+        # Calculate NPCR
+        # NPCR = (ΣΣ D(i,j)) / (M × N) × 100%
+        D = (C1 != C2).astype(np.int32)
+        npcr = (np.sum(D) / total_pixels) * 100
+
+        # Calculate UACI
+        # UACI = (1/(M×N)) × ΣΣ |C1(i,j) - C2(i,j)| / 255 × 100%
+        intensity_diff = np.abs(C1.astype(np.float64) - C2.astype(np.float64))
         uaci = (np.sum(intensity_diff) / (total_pixels * 255)) * 100
-        
+
         return {
             'NPCR': npcr,
-            'UACI': uaci
+            'UACI': uaci,
+            'theoretical_NPCR': 99.6094,
+            'theoretical_UACI': 33.4635
         }
 
