@@ -90,6 +90,8 @@ python3 main.py encrypt -i ./test_images -o ./encrypted_images
 
 # Decrypt images (using the key from encryption)
 python3 main.py decrypt -i ./encrypted_images -o ./decrypted_images -k <your-512-bit-hex-key>
+#security analysis
+ python3 analyze_security.py --all
 ```
 
 ## 🔐 Encryption Process
