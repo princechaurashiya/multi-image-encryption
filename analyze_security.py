@@ -138,6 +138,8 @@ def create_single_image_encryptor():
     return encrypt_single_image
 
 
+
+
 def analyze_differential_attack(original_folder: str, encrypted_folder: str = None) -> dict:
     """
     Analyze differential attack resistance using correct methodology.

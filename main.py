@@ -2,7 +2,7 @@ import argparse
 from encrypt import encrypt_images
 from decrypt import decrypt_images
 
-def main():
+def main(): 
     parser = argparse.ArgumentParser(description="Multi-image encryption based on the paper by Zhou et al.")
     parser.add_argument('action', choices=['encrypt', 'decrypt'], help="Action to perform: 'encrypt' or 'decrypt'")
     parser.add_argument('--input', '-i', required=True, help="Path to the input folder containing images.")
