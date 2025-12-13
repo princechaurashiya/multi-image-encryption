@@ -4,12 +4,10 @@ Security Analysis Script
 Analyzes the encryption algorithm's security properties:
 1. Correlation coefficient analysis (Rxy)
 2. NPCR and UACI for differential attack resistance
-3. Generates comprehensive security report
 """
 
 import argparse
 import os
-from pathlib import Path
 from security_analysis import SecurityAnalyzer
 import numpy as np
 from PIL import Image
@@ -52,8 +50,6 @@ def create_single_image_encryptor():
     for NPCR/UACI analysis.
     """
     import hashlib
-    import tempfile
-    import shutil
     from chaotic_maps.tdlcic import tdlcic_map
     from dna_operations import core
 
@@ -136,7 +132,6 @@ def create_single_image_encryptor():
         return P_end
 
     return encrypt_single_image
-
 
 
 
